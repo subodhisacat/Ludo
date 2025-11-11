@@ -1,142 +1,625 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ludo Online (2 Players)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Beautiful 2-Player Ludo</title>
+
+<!-- Supabase JS (optional realtime) -->
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
 <style>
-  body {
-    text-align: center;
-    font-family: Arial;
-    background: #e3f2fd;
+  :root{
+    --bg:#f0f7ff;
+    --card:#ffffff;
+    --accent:#1565c0;
   }
-  .board {
-    display: grid;
-    grid-template-columns: repeat(6, 60px);
-    grid-template-rows: repeat(6, 60px);
-    gap: 4px;
-    margin: 20px auto;
-    width: fit-content;
+  body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Arial;background:var(--bg);color:#222;display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px;}
+  .app {width:100%;max-width:980px;background:var(--card);box-shadow:0 8px 30px rgba(10,20,40,0.08);border-radius:12px;padding:16px;}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+  h1{font-size:18px;margin:0}
+  .controls{display:flex;gap:8px;align-items:center;}
+  input,button,select{font-size:14px;padding:8px;border-radius:8px;border:1px solid #dfe9f5}
+  button.primary{background:var(--accent);color:#fff;border:none;cursor:pointer}
+  .row{display:flex;gap:12px;align-items:center;}
+  .board-wrap{display:flex;gap:12px;align-items:center;justify-content:center;padding:8px;}
+  /* board: 15x15 grid like real Ludo */
+  .board{
+    display:grid;
+    grid-template-columns:repeat(15,38px);
+    grid-template-rows:repeat(15,38px);
+    gap:2px;
+    background:transparent;
+    border-radius:8px;
+    padding:6px;
   }
-  .cell {
-    width: 60px;
-    height: 60px;
-    border: 2px solid #90caf9;
-    background: #fff;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  .p1 { background: red; border-radius: 50%; width: 40px; height: 40px; }
-  .p2 { background: green; border-radius: 50%; width: 40px; height: 40px; }
-  button { background: #1565c0; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; }
+  .cell{width:38px;height:38px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:6px}
+  .blank{background:transparent}
+  .home-red{background:#ffebee}
+  .home-green{background:#e8f5e9}
+  .path{background:#fff}
+  .safe{box-shadow:inset 0 0 0 3px rgba(0,0,0,0.03)}
+  .star{font-size:12px}
+  .center{grid-column:7/10;grid-row:7/10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+  .center .inner{width:100%;height:100%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+  .cell.token-slot{position:relative}
+  .token{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;box-shadow:0 6px 12px rgba(10,20,40,0.12);position:absolute;transform:translate(-50%,-50%);left:50%;top:50%}
+  .token.small{width:26px;height:26px;font-size:12px}
+  .token.red{background:#d32f2f}
+  .token.green{background:#2e7d32}
+  .dice{width:64px;height:64px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:22px;background:#fff;box-shadow:0 8px 18px rgba(10,20,40,0.06)}
+  .dice .dots{font-size:20px}
+  .log{height:70px;overflow:auto;padding:8px;border-radius:8px;background:#fbfdff;border:1px solid #eef6ff}
+  .players{display:flex;gap:12px;align-items:center}
+  .player-card{padding:8px;border-radius:8px;background:#fff;border:1px solid #eef6ff;min-width:140px}
+  .turn{font-weight:700}
+  .small-muted{font-size:12px;color:#666}
+  .footer{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+  @media(max-width:880px){ .board{transform:scale(0.84);transform-origin:center top} }
 </style>
 </head>
 <body>
 
-<h2>🎲 Online Ludo (2 Players)</h2>
+<div class="app">
+  <header>
+    <h1>🎲 Beautiful 2-Player Ludo</h1>
+    <div class="controls">
+      <input id="room" placeholder="room code (ex: abc123)" />
+      <button id="joinBtn" class="primary">Join / Create</button>
+      <button id="localBtn">Play Local</button>
+    </div>
+  </header>
 
-<div>
-  <input id="room" placeholder="Enter room code" />
-  <button id="joinBtn">Join Game</button>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <div class="player-card">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:12px;height:12px;background:#d32f2f;border-radius:3px"></div>
+        <div><strong>Player 1</strong> <div class="small-muted">Red</div></div>
+      </div>
+      <div style="margin-top:8px">Tokens: <span id="p1tokens">0,0</span></div>
+      <div style="margin-top:6px">Score: <span id="p1score">0</span></div>
+    </div>
+
+    <div class="player-card">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:12px;height:12px;background:#2e7d32;border-radius:3px"></div>
+        <div><strong>Player 2</strong> <div class="small-muted">Green</div></div>
+      </div>
+      <div style="margin-top:8px">Tokens: <span id="p2tokens">0,0</span></div>
+      <div style="margin-top:6px">Score: <span id="p2score">0</span></div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div class="dice" id="diceBox"><div class="dots" id="diceDots">-</div><div class="small-muted" id="diceLabel">Roll</div></div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="rollBtn" class="primary">Roll Dice</button>
+        <button id="moveBtn">Move Token</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="board-wrap" style="margin-top:12px;">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div style="display:flex;gap:12px;margin-top:12px;align-items:flex-start;">
+    <div class="log" id="log"></div>
+    <div style="flex:1">
+      <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
+        <div class="small-muted">Turn:</div>
+        <div class="turn" id="turnLabel">-</div>
+      </div>
+      <div style="height:8px"></div>
+      <div class="small-muted">Tip: Need a 6 to bring token out of home. Capture opponent to send them back.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="small-muted">Works local or with Supabase. Room state sync attempts when you join a room.</div>
+    <div>
+      <button id="resetBtn">Reset Board</button>
+    </div>
+  </div>
 </div>
 
-<div class="board" id="board"></div>
-<button id="rollBtn" disabled>Roll Dice</button>
-<p id="status"></p>
-
 <script>
-const board = document.getElementById('board');
-const rollBtn = document.getElementById('rollBtn');
-const status = document.getElementById('status');
-const roomInput = document.getElementById('room');
-const joinBtn = document.getElementById('joinBtn');
+/*
+  Simple but full Ludo logic for two players.
+  - Each player has 2 tokens.
+  - Positions:
+    - -1 : at home
+    - 0..51 : on main circle path
+    - 52..57 : final home column (player specific) we map them to indexes but store as numbers > 51
+  Path layout and start index:
+    Player 1 (red) start index: 0
+    Player 2 (green) start index: 26
+  Safe squares are a small set (like real Ludo) where capture is not allowed.
+*/
 
-// 🟦 Replace with your Supabase details
 const SUPABASE_URL = "https://aijweamsznbkyotuqetj.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpandlYW1zem5ia3lvdHVxZXRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4Nzg0NzksImV4cCI6MjA3MTQ1NDQ3OX0.11FJH3URao4I7GmKcy21CGjRLnufseklVHUH3jolIck";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let supabase = null;
+try { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e){ supabase = null; }
 
+const boardEl = document.getElementById('board');
+const logEl = document.getElementById('log');
+const rollBtn = document.getElementById('rollBtn');
+const moveBtn = document.getElementById('moveBtn');
+const diceDots = document.getElementById('diceDots');
+const diceLabel = document.getElementById('diceLabel');
+const turnLabel = document.getElementById('turnLabel');
+const p1tokensEl = document.getElementById('p1tokens');
+const p2tokensEl = document.getElementById('p2tokens');
+const p1scoreEl = document.getElementById('p1score');
+const p2scoreEl = document.getElementById('p2score');
+const roomInput = document.getElementById('room');
+const joinBtn = document.getElementById('joinBtn');
+const localBtn = document.getElementById('localBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+let boardCells = [];
+let selectedToken = null;
+let diceVal = null;
 let roomCode = '';
-let player = 0;
-let gameData = { p1_pos: 0, p2_pos: 0, turn: 1, dice: 0 };
+let realTime = false;
+let playerId = 1; // local default: player1 is red, player2 is green when joining remotely
+let listenChannel = null;
+let gameState = null; // full object
 
-for (let i = 0; i < 36; i++) {
-  const cell = document.createElement('div');
-  cell.className = 'cell';
-  cell.textContent = i + 1;
-  board.appendChild(cell);
-}
+// path indexes 0..51 (clockwise like typical Ludo)
+const PATH = Array.from({length:52}, (_,i)=>i);
+const P1_START = 0;
+const P2_START = 26;
+const SAFE_SQUARES = [0,8,13,21,26,34,39,47]; // common safe/star squares
 
-async function joinGame() {
-  roomCode = roomInput.value.trim();
-  if (!roomCode) return alert("Enter room code!");
+// Helper: create 15x15 grid cells and style a Ludo board visually
+function buildVisualBoard(){
+  boardEl.innerHTML = '';
+  boardCells = [];
 
-  let { data } = await supabase.from('games').select('*').eq('room_code', roomCode).single();
-
-  if (!data) {
-    // create new game
-    const { data: newGame } = await supabase.from('games').insert({
-      room_code: roomCode,
-      p1_pos: 0,
-      p2_pos: 0,
-      turn: 1,
-      dice: 0
-    }).select().single();
-    data = newGame;
-    player = 1;
-    status.textContent = "You are Player 1. Waiting for Player 2...";
-  } else {
-    player = 2;
-    status.textContent = "You are Player 2.";
+  // create map for styling: we will give basic colors for home corners and path
+  const N=15;
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      const idx = r*N + c;
+      const div = document.createElement('div');
+      div.className='cell';
+      // blank by default
+      div.classList.add('blank');
+      boardEl.appendChild(div);
+      boardCells.push(div);
+    }
   }
 
-  gameData = data;
-  rollBtn.disabled = (player !== data.turn);
-  listenForChanges();
-  updateBoard();
+  // We will mark four home squares visually:
+  // top-left 6x6 red home
+  markSquare(0,0,6,6,'home-red');
+  // bottom-right 6x6 green home
+  markSquare(9,9,6,6,'home-green');
+
+  // center safe area (4x4)
+  const centerStart = 5*15 + 5;
+  for(let rr=5; rr<10; rr++){
+    for(let cc=5; cc<10; cc++){
+      const id = rr*15 + cc;
+      boardCells[id].classList.remove('blank');
+      boardCells[id].classList.add('center');
+      boardCells[id].style.background='linear-gradient(180deg,#fff,#f5f9ff)';
+    }
+  }
+
+  // Put small numbers for path positions visually. We map 52 path positions to some fixed positions.
+  // For simplicity, place path points around center in a rectangle shape.
+  const pathMap = computeVisualPathMap();
+  for(let i=0;i<52;i++){
+    const pos = pathMap[i];
+    const cell = boardCells[pos];
+    cell.classList.remove('blank');
+    cell.classList.add('path');
+    cell.textContent = ''; // remove index label for cleaner look
+    if (SAFE_SQUARES.includes(i)){
+      const star = document.createElement('div');
+      star.className='star';
+      star.textContent = '★';
+      star.title = 'Safe';
+      cell.appendChild(star);
+      cell.classList.add('safe');
+    }
+  }
+
+  // Draw token start slots in homes
+  // Red home slots
+  placeInCell(2,2, makeEmptySlot('r0') );
+  placeInCell(3,3, makeEmptySlot('r1') );
+  // Green home
+  placeInCell(11,11, makeEmptySlot('g0') );
+  placeInCell(10,10, makeEmptySlot('g1') );
+
+  // center area decorative
+  const centerCell = boardCells[7*15 + 7];
+  centerCell.innerHTML = '<div style="text-align:center;font-weight:700">LUDO</div>';
+
+  // Save path map on state for logic use
+  window._visualPathMap = pathMap;
 }
 
-async function rollDice() {
-  if (player !== gameData.turn) return alert("Wait for your turn!");
-  const dice = Math.floor(Math.random() * 6) + 1;
-
-  if (gameData.turn === 1) gameData.p1_pos += dice;
-  else gameData.p2_pos += dice;
-
-  if (gameData.p1_pos >= 35) return alert("🏆 Player 1 Wins!");
-  if (gameData.p2_pos >= 35) return alert("🏆 Player 2 Wins!");
-
-  gameData.turn = gameData.turn === 1 ? 2 : 1;
-  gameData.dice = dice;
-
-  await supabase.from('games').update(gameData).eq('room_code', roomCode);
+function markSquare(r,c,rows,cols,cls){
+  for(let i=r;i<r+rows;i++){
+    for(let j=c;j<c+cols;j++){
+      const id = i*15 + j;
+      const cell = boardCells[id];
+      cell.classList.remove('blank');
+      cell.classList.add(cls);
+    }
+  }
 }
 
-function updateBoard() {
-  const cells = document.querySelectorAll('.cell');
-  cells.forEach(c => c.innerHTML = '');
-  if (gameData.p1_pos < 36) cells[gameData.p1_pos].innerHTML = '<div class="p1"></div>';
-  if (gameData.p2_pos < 36) cells[gameData.p2_pos].innerHTML = '<div class="p2"></div>';
-  rollBtn.disabled = (player !== gameData.turn);
-  status.textContent = `Player ${gameData.turn}'s turn | Dice: ${gameData.dice}`;
+function makeEmptySlot(id){ const el = document.createElement('div'); el.className='token-slot'; el.dataset.slot = id; return el; }
+function placeInCell(r,c,el){ const id = r*15 + c; const cell = boardCells[id]; cell.appendChild(el); }
+
+// create a visual mapping of 52 path positions to 15x15 cell indices
+function computeVisualPathMap(){
+  // We'll create a rectangle around the center.
+  // Top row (left to right) 6 positions, right column 6 positions, bottom row 6 positions, left column 6 positions and some middle connectors.
+  const map = [];
+  // top path: row 4, cols 5..10 (6 cells)
+  for(let c=5;c<=10;c++) map.push(4*15 + c);
+  // right down: rows 5..10, col 11 (6)
+  for(let r=5;r<=10;r++) map.push(r*15 + 11);
+  // bottom right row reversed: row 11, cols 10..5 (6)
+  for(let c=10;c>=5;c--) map.push(11*15 + c);
+  // left up: rows 10..5, col 4 (6)
+  for(let r=10;r>=5;r--) map.push(r*15 + 4);
+  // Now we added 24 positions; we need 52. We'll add the rest in outer loop to make smooth path:
+  // add more around: top outer: row 2, cols 5..10 (6) then right outer col 13 rows 3..8 (6) then bottom outer row 12 cols 10..5 (6) then left outer col 2 rows 8..3 (6)
+  for(let c=5;c<=10;c++) map.push(2*15 + c);
+  for(let r=3;r<=8;r++) map.push(r*15 + 13);
+  for(let c=10;c>=5;c--) map.push(12*15 + c);
+  for(let r=8;r>=3;r--) map.push(r*15 + 2);
+  // Now map length should be 48; add 4 more bridging positions (place near corners)
+  // push four corner-ish spots (fill to 52)
+  map.push(3*15 + 4);
+  map.push(4*15 + 13);
+  map.push(11*15 + 13);
+  map.push(11*15 + 2);
+  // ensure length 52
+  if(map.length>52) map.length = 52;
+  while(map.length<52) map.push(7*15 + 0 + map.length%15);
+  return map;
 }
 
-function listenForChanges() {
-  supabase
-    .channel('public:games')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, (payload) => {
-      if (payload.new.room_code === roomCode) {
-        gameData = payload.new;
-        updateBoard();
+// Utility logging
+function log(s){
+  const t = document.createElement('div'); t.textContent = s; logEl.prepend(t);
+}
+
+// Game state helpers
+function newGameState(){
+  return {
+    turn: 1, // 1 or 2
+    dice: 0,
+    p1: { tokens: [-1,-1], finished:0 },
+    p2: { tokens: [-1,-1], finished:0 },
+    createdAt: Date.now()
+  };
+}
+
+function saveLocalState(){
+  localStorage.setItem('_ludo_state_'+ (roomCode||'local'), JSON.stringify(gameState));
+}
+
+function loadLocalState(){
+  const raw = localStorage.getItem('_ludo_state_'+ (roomCode||'local'));
+  if(raw) {
+    try{ gameState = JSON.parse(raw); return true; } catch(e){}
+  }
+  return false;
+}
+
+// Render functions
+function render(){
+  // clear tokens on board
+  boardCells.forEach(c=> {
+    // remove tokens inside path cells
+    Array.from(c.querySelectorAll('.token')).forEach(t=>t.remove());
+  });
+
+  // draw tokens by mapping positions to visual cells
+  const pathMap = window._visualPathMap;
+  function drawToken(player, idx, pos){
+    const el = document.createElement('div');
+    el.className = 'token ' + (player===1? 'red':'green');
+    el.textContent = (idx+1);
+    el.title = `${player===1?'Red':'Green'} token ${idx+1}`;
+    el.dataset.player = player;
+    el.dataset.tokenIndex = idx;
+    el.onclick = ()=> onTokenClick(player, idx);
+    // position logic:
+    if(pos === -1){
+      // at home: place in home boxes defined earlier
+      // red: slots at visual coordinates (2,2) & (3,3) => compute their index to append token
+      let homeCellIndex = player===1 ? (idx===0 ? 2*15 + 2 : 3*15 + 3) : (idx===0 ? 11*15 + 11 : 10*15 + 10);
+      boardCells[homeCellIndex].appendChild(el);
+    } else if(pos >=0 && pos < 52){
+      const cellIndex = pathMap[pos];
+      // attach token as child
+      boardCells[cellIndex].appendChild(el);
+    } else {
+      // finished home column: place on center near center
+      const offset = pos - 52; // 0..5
+      const centerBase = 7*15 + 7;
+      // place above center for red, below for green
+      const cellIndex = player===1 ? (6*15 + 7 - offset) : (8*15 + 7 + offset);
+      if(boardCells[cellIndex]) boardCells[cellIndex].appendChild(el);
+      else boardCells[centerBase].appendChild(el);
+    }
+  }
+
+  gameState.p1.tokens.forEach((pos,i)=> drawToken(1,i,pos));
+  gameState.p2.tokens.forEach((pos,i)=> drawToken(2,i,pos));
+
+  // UI updates
+  diceDots.textContent = gameState.dice || '-';
+  diceLabel.textContent = gameState.dice ? `Rolled ${gameState.dice}` : 'Roll';
+  turnLabel.textContent = (gameState.turn===1? 'Player 1 (Red)':'Player 2 (Green)');
+  p1tokensEl.textContent = gameState.p1.tokens.join(',');
+  p2tokensEl.textContent = gameState.p2.tokens.join(',');
+  p1scoreEl.textContent = gameState.p1.finished;
+  p2scoreEl.textContent = gameState.p2.finished;
+  saveLocalState();
+}
+
+// Try to move token by id if valid
+function tryMoveToken(player, tokenIndex){
+  const me = (player===1? gameState.p1 : gameState.p2);
+  const them = (player===1? gameState.p2 : gameState.p1);
+  let pos = me.tokens[tokenIndex];
+  const d = gameState.dice;
+  if(d === 0 || d === null) { alert('Roll the dice first'); return false; }
+  // if at home (-1), must roll 6 to enter start
+  if(pos === -1){
+    if(d !== 6) { alert('Need a 6 to move out of home'); return false; }
+    // move to start
+    const start = player===1 ? P1_START : P2_START;
+    // if start occupied by our token, can't move (unless stacking allowed) - here stacking allowed
+    me.tokens[tokenIndex] = start;
+    gameState.dice = 0;
+    log(`${player===1? 'Red':'Green'} token ${tokenIndex+1} entered board (start ${start})`);
+    finishMoveAndSync();
+    return true;
+  }
+  // if already in final home (>=52), move forward but cannot exceed final (we will allow up to pos 57)
+  if(pos >= 52){
+    const target = pos + d;
+    const finalTarget = 57; // define final end
+    if(target > finalTarget) { alert('Too many steps to finish'); return false; }
+    me.tokens[tokenIndex] = target;
+    if(target === finalTarget){ me.finished += 1; log(`${player===1? 'Red':'Green'} token ${tokenIndex+1} finished!`); }
+    gameState.dice = 0;
+    finishMoveAndSync();
+    return true;
+  }
+  // normal move on main path
+  let idx = pos;
+  let target = (idx + d) % 52;
+
+  // if token passes its home entry, it should go to final column rather than wrap around.
+  // Determine steps until player entry point.
+  const entry = player===1 ? 51 : 25; // square before start is the entry to final column
+  // compute distance from idx to entry
+  let distToEntry = 0;
+  if(idx <= entry) distToEntry = entry - idx;
+  else distToEntry = (52 - idx) + entry;
+  if(d > distToEntry){
+    // move into final home column
+    const stepsIntoHome = d - distToEntry - 1; // zero-based
+    const homePos = 52 + stepsIntoHome; // 52..57
+    if(homePos > 57){ alert('Move too large to enter final'); return false; }
+    me.tokens[tokenIndex] = homePos;
+    if(homePos === 57) me.finished += 1;
+    gameState.dice = 0;
+    log(`${player===1?'Red':'Green'} token ${tokenIndex+1} entered final home (pos ${homePos})`);
+    finishMoveAndSync();
+    return true;
+  } else {
+    // normal move on circle
+    target = (idx + d) % 52;
+    me.tokens[tokenIndex] = target;
+    gameState.dice = 0;
+    log(`${player===1?'Red':'Green'} token ${tokenIndex+1} moved to ${target}`);
+    // check capture: cannot capture on safe squares
+    if(!SAFE_SQUARES.includes(target)){
+      // if opponent has token on same target and is not in final home (>=52), capture it
+      them.tokens.forEach((ot,i)=>{
+        if(ot === target){
+          them.tokens[i] = -1; // send back home
+          log(`Captured opponent token! ${player===1?'Red':'Green'} captured ${player===1?'Green':'Red'} token ${i+1}`);
+        }
+      });
+    }
+    finishMoveAndSync();
+    return true;
+  }
+}
+
+// after any move update turn and sync
+function finishMoveAndSync(){
+  // if dice was 6, player gets another roll (except when moved into final and finished maybe)
+  // for simplicity: if last dice was 6, keep same turn, else switch
+  // but since we set gameState.dice=0 earlier, we need to check lastDice stored temporarily. We'll allow this:
+  // In our flow we check lastDice in move function before clearing -> We didn't save it; simpler: if last action rolled 6 earlier, then allow same turn. To implement, store lastRoll.
+  const last = window._lastRoll || 0;
+  if(last !== 6) gameState.turn = (gameState.turn===1?2:1);
+  window._lastRoll = 0;
+  render();
+  trySyncState();
+}
+
+// token click handler: select token to move if it is current player's token
+function onTokenClick(player, idx){
+  if(player !== gameState.turn){
+    alert("Not your turn");
+    return;
+  }
+  // if dice 0 prompt to roll
+  if(!gameState.dice) { alert('Roll the dice first'); return; }
+  const ok = tryMoveToken(player, idx);
+  if(ok){
+    selectedToken = null;
+  }
+}
+
+// roll dice
+rollBtn.onclick = async ()=>{
+  if(!gameState) return alert('Start a game first');
+  if(gameState.turn !== playerId && realTime) return alert('Wait for your turn');
+  // do rolling animation
+  rollBtn.disabled = true;
+  diceDots.textContent = '...';
+  diceLabel.textContent = 'Rolling';
+  await new Promise(r=>setTimeout(r, 700));
+  const d = Math.floor(Math.random()*6)+1;
+  window._lastRoll = d;
+  gameState.dice = d;
+  log(`${gameState.turn === 1 ? 'Red' : 'Green'} rolled ${d}`);
+  render();
+  rollBtn.disabled = false;
+  // if playing locally and turn doesn't match, still allow
+}
+
+// move button (choose first movable token automatically)
+moveBtn.onclick = ()=>{
+  if(!gameState) return;
+  if(gameState.turn !== playerId && realTime) { alert('Wait for your turn'); return; }
+  const p = (gameState.turn===1? gameState.p1 : gameState.p2);
+  const movable = [];
+  p.tokens.forEach((pos,i)=>{
+    // possible move?
+    if(pos === -1 && gameState.dice ===6) movable.push(i);
+    else if(pos >=0 && gameState.dice>0) movable.push(i);
+    else if(pos >=52 && gameState.dice>0) movable.push(i);
+  });
+  if(movable.length===0){ alert('No token can move'); return; }
+  // if multiple, pick first
+  tryMoveToken(gameState.turn, movable[0]);
+}
+
+// Reset board
+resetBtn.onclick = ()=>{
+  gameState = newGameState();
+  render();
+  trySyncState(true);
+}
+
+// Join remote room
+joinBtn.onclick = async ()=>{
+  roomCode = roomInput.value.trim();
+  if(!roomCode) return alert('Enter room code');
+  // set player id: if already a game exists and has only one player, you become player2
+  // we'll try to read "games" table with row where room_code = roomCode
+  if(!supabase){ alert('Supabase client not available. You will play local.'); realTime=false; return; }
+  realTime=true;
+  // try to fetch
+  try{
+    const { data, error } = await supabase.from('games').select('id, room_code, state').eq('room_code', roomCode).single();
+    if(error && error.code === 'PGRST116'){ /*not found*/ }
+    if(data && data.state){
+      // found: load state
+      try{ gameState = JSON.parse(data.state); }
+      catch(e){ gameState = newGameState(); }
+      // determine if we are player 1 or 2: if createdAt had a creator? Simpler: ask user to choose own id if none set
+      const who = confirm('Are you Player 1 (Red)? Press OK for Player1, Cancel for Player2');
+      playerId = who ? 1 : 2;
+      log('Connected to room ' + roomCode + ' as Player ' + playerId);
+      render();
+      subscribeToRoom();
+    } else {
+      // create new room
+      gameState = newGameState();
+      playerId = 1;
+      // insert to DB: must have table "games" with columns: room_code (text) and state (text/json)
+      const insertObj = { room_code: roomCode, state: JSON.stringify(gameState) };
+      const { data: insertData, error: insertErr } = await supabase.from('games').insert(insertObj).select().single();
+      if(insertErr){ log('Failed to create remote room: ' + (insertErr.message || insertErr)); realTime=false; alert('Could not create room on Supabase, will stay local.'); return; }
+      log('Room created: ' + roomCode + '. You are Player 1.');
+      render();
+      subscribeToRoom();
+    }
+  }catch(e){
+    realTime=false;
+    alert('Error connecting to Supabase. Playing local only.');
+    console.error(e);
+  }
+};
+
+// subscribe to realtime changes
+async function subscribeToRoom(){
+  if(!supabase) return;
+  // create channel for games table changes and filter by room_code
+  try{
+    if(listenChannel) { try{ await supabase.channel(listenChannel).unsubscribe(); }catch(e){} }
+    listenChannel = supabase.channel('games-room-' + roomCode);
+    listenChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `room_code=eq.${roomCode}` }, (payload)=>{
+      // payload.new.state has JSON string
+      if(payload && payload.new && payload.new.state){
+        try{
+          const remote = JSON.parse(payload.new.state);
+          // ignore if changed by this client very recently (simple check using createdAt?) We'll accept remote overwrite to stay in sync.
+          gameState = remote;
+          render();
+          log('State updated from server');
+        }catch(e){}
       }
-    })
-    .subscribe();
+    });
+    await listenChannel.subscribe();
+    log('Subscribed to room updates.');
+  }catch(e){
+    console.error(e);
+    log('Failed realtime subscription.');
+  }
 }
 
-joinBtn.onclick = joinGame;
-rollBtn.onclick = rollDice;
+// sync to server (update row)
+async function trySyncState(force=false){
+  saveLocalState();
+  if(!realTime || !supabase || !roomCode) return;
+  // get row
+  try{
+    const prefs = { returning: 'representation' };
+    // update state in games table row where room_code
+    const { data, error } = await supabase.from('games').update({ state: JSON.stringify(gameState) }).eq('room_code', roomCode);
+    if(error){ console.warn('Sync error', error); log('Sync failed: ' + (error.message || JSON.stringify(error))); }
+  }catch(e){
+    console.error(e);
+  }
+}
+
+// initial
+(function init(){
+  buildVisualBoard();
+  // try load local
+  if(!loadLocalState()){
+    gameState = newGameState();
+  }
+  render();
+  log('Ready. Click "Play Local" or enter room code and Join.');
+})();
+
+// local play button
+localBtn.onclick = ()=>{
+  realTime = false;
+  roomCode = '';
+  playerId = 1;
+  if(!gameState) gameState = newGameState();
+  saveLocalState();
+  log('Local play mode.');
+};
+
+// attempt to autosync periodically when realTime true
+setInterval(()=> {
+  if(realTime) trySyncState();
+}, 5000);
+
 </script>
 
 </body>

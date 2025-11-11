@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ludo Online (2 Players)</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  body {
+    text-align: center;
+    font-family: Arial;
+    background: #e3f2fd;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(6, 60px);
+    grid-template-rows: repeat(6, 60px);
+    gap: 4px;
+    margin: 20px auto;
+    width: fit-content;
+  }
+  .cell {
+    width: 60px;
+    height: 60px;
+    border: 2px solid #90caf9;
+    background: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .p1 { background: red; border-radius: 50%; width: 40px; height: 40px; }
+  .p2 { background: green; border-radius: 50%; width: 40px; height: 40px; }
+  button { background: #1565c0; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h2>🎲 Online Ludo (2 Players)</h2>
+
+<div>
+  <input id="room" placeholder="Enter room code" />
+  <button id="joinBtn">Join Game</button>
+</div>
+
+<div class="board" id="board"></div>
+<button id="rollBtn" disabled>Roll Dice</button>
+<p id="status"></p>
+
+<script>
+const board = document.getElementById('board');
+const rollBtn = document.getElementById('rollBtn');
+const status = document.getElementById('status');
+const roomInput = document.getElementById('room');
+const joinBtn = document.getElementById('joinBtn');
+
+// 🟦 Replace with your Supabase details
+const SUPABASE_URL = "https://aijweamsznbkyotuqetj.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpandlYW1zem5ia3lvdHVxZXRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4Nzg0NzksImV4cCI6MjA3MTQ1NDQ3OX0.11FJH3URao4I7GmKcy21CGjRLnufseklVHUH3jolIck";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let roomCode = '';
+let player = 0;
+let gameData = { p1_pos: 0, p2_pos: 0, turn: 1, dice: 0 };
+
+for (let i = 0; i < 36; i++) {
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+  cell.textContent = i + 1;
+  board.appendChild(cell);
+}
+
+async function joinGame() {
+  roomCode = roomInput.value.trim();
+  if (!roomCode) return alert("Enter room code!");
+
+  let { data } = await supabase.from('games').select('*').eq('room_code', roomCode).single();
+
+  if (!data) {
+    // create new game
+    const { data: newGame } = await supabase.from('games').insert({
+      room_code: roomCode,
+      p1_pos: 0,
+      p2_pos: 0,
+      turn: 1,
+      dice: 0
+    }).select().single();
+    data = newGame;
+    player = 1;
+    status.textContent = "You are Player 1. Waiting for Player 2...";
+  } else {
+    player = 2;
+    status.textContent = "You are Player 2.";
+  }
+
+  gameData = data;
+  rollBtn.disabled = (player !== data.turn);
+  listenForChanges();
+  updateBoard();
+}
+
+async function rollDice() {
+  if (player !== gameData.turn) return alert("Wait for your turn!");
+  const dice = Math.floor(Math.random() * 6) + 1;
+
+  if (gameData.turn === 1) gameData.p1_pos += dice;
+  else gameData.p2_pos += dice;
+
+  if (gameData.p1_pos >= 35) return alert("🏆 Player 1 Wins!");
+  if (gameData.p2_pos >= 35) return alert("🏆 Player 2 Wins!");
+
+  gameData.turn = gameData.turn === 1 ? 2 : 1;
+  gameData.dice = dice;
+
+  await supabase.from('games').update(gameData).eq('room_code', roomCode);
+}
+
+function updateBoard() {
+  const cells = document.querySelectorAll('.cell');
+  cells.forEach(c => c.innerHTML = '');
+  if (gameData.p1_pos < 36) cells[gameData.p1_pos].innerHTML = '<div class="p1"></div>';
+  if (gameData.p2_pos < 36) cells[gameData.p2_pos].innerHTML = '<div class="p2"></div>';
+  rollBtn.disabled = (player !== gameData.turn);
+  status.textContent = `Player ${gameData.turn}'s turn | Dice: ${gameData.dice}`;
+}
+
+function listenForChanges() {
+  supabase
+    .channel('public:games')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, (payload) => {
+      if (payload.new.room_code === roomCode) {
+        gameData = payload.new;
+        updateBoard();
+      }
+    })
+    .subscribe();
+}
+
+joinBtn.onclick = joinGame;
+rollBtn.onclick = rollDice;
+</script>
+
+</body>
+</html>
